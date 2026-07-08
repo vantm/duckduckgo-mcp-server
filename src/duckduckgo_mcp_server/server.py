@@ -13,7 +13,7 @@ import time
 import re
 import os
 from enum import Enum
-
+from duckduckgo_mcp_server.ua import pick_random_user_agent
 
 class SafeSearchMode(Enum):
     """DuckDuckGo SafeSearch modes"""
@@ -68,7 +68,6 @@ class DuckDuckGoSearcher:
         'sec-fetch-user': '?1' ,
         'sec-gpc': '1' ,
         'upgrade-insecure-requests': '1' ,
-        'user-agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36',
     }
 
     def __init__(self, safe_search: SafeSearchMode = SafeSearchMode.MODERATE, default_region: str = ""):
@@ -129,6 +128,9 @@ class DuckDuckGoSearcher:
             await ctx.info(f"Searching DuckDuckGo for: {query} (SafeSearch: {self.safe_search.name}, Region: {effective_region or 'default'})")
 
             async with httpx.AsyncClient() as client:
+                headers = self.HEADERS | {
+                    "user-agent": pick_random_user_agent()
+                }
                 response = await client.post(
                     self.BASE_URL, data=data, headers=self.HEADERS, timeout=30.0
                 )
@@ -239,7 +241,7 @@ class WebContentFetcher:
             response = await client.get(
                 url,
                 headers={
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                    "User-Agent": pick_random_user_agent()
                 },
                 follow_redirects=True,
                 timeout=30.0,
