@@ -45,8 +45,9 @@ uv run --with pip-audit pip-audit --desc
 Single-module server in `src/duckduckgo_mcp_server/server.py` with three main classes:
 
 - **`DuckDuckGoSearcher`** — Scrapes DuckDuckGo's HTML endpoint (`html.duckduckgo.com/html`) via POST requests. Parses results with BeautifulSoup. Handles SafeSearch (`kp` param) and region (`kl` param) configuration.
-- **`WebContentFetcher`** — Fetches arbitrary URLs, strips non-content elements (script, style, nav, header, footer), and returns cleaned text truncated to 8000 chars.
-- **`RateLimiter`** — Sliding-window limiter (default). `TokenBucketLimiter` is the optional burst-then-smooth strategy. `HostRateLimiter` adds a per-host fetch cap. HTTP 429 honors `Retry-After` and retries once.
+- **`WebContentFetcher`** — Fetches arbitrary URLs, strips non-content elements (script, style, nav, header, footer), and returns cleaned text truncated to 8000 chars. Parsed pages are kept in an in-memory `TTLCache` so pagination does not re-download.
+- **`RateLimiter`** — Sliding-window limiter (default). `TokenBucketLimiter` is the optional burst-then-smooth strategy. `HostRateLimiter` adds a per-host fetch cap. HTTP 429 honors `Retry-After` and retries once. Cache hits skip the fetch limiter.
+- **`TTLCache`** — TTL + LRU cache used by `fetch_content`. Disabled when TTL or max entries is 0.
 
 Two MCP tools are exposed: `search` and `fetch_content`.
 
@@ -61,6 +62,8 @@ Environment variables read at startup (not per-request):
 - `DDG_CA_CERTS`: path to a PEM CA bundle for verifying TLS on outbound requests (needed behind TLS-intercepting proxies — httpx no longer reads `SSL_CERT_FILE`). `DDG_SSL_VERIFY=0` disables verification entirely (discouraged). Also `--ca-certs` / `--no-ssl-verify`. Applies to all four client sites (httpx + curl_cffi, search + fetch).
 - `DDG_RATE_LIMIT_STRATEGY`: `sliding` (default) or `token_bucket`. Also `--rate-limit-strategy`.
 - `DDG_SEARCH_RPM` / `DDG_FETCH_RPM` / `DDG_FETCH_HOST_RPM`: rate-limit caps (defaults 30 / 20 / 0; the per-host cap is opt-in). Also `--search-rpm` / `--fetch-rpm` / `--fetch-host-rpm`.
+- `DDG_CACHE_TTL` / `DDG_CACHE_MAX_ENTRIES`: in-memory `fetch_content` cache (default 300s / 64 entries). `0` disables. Also `--cache-ttl` / `--cache-max-entries`.
+- `DDG_PARSE_MODE`: default `fetch_content` extractor (`text` / `main` / `markdown`). Also `--parse-mode`. Per-call `parse_mode` overrides it. Cache keys include the mode.
 
 ## Testing
 

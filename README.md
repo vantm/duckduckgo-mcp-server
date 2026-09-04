@@ -83,6 +83,9 @@ Add the following configuration:
 - `DDG_SEARCH_RPM`: Search requests per minute (default: `30`).
 - `DDG_FETCH_RPM`: Global `fetch_content` requests per minute (default: `20`).
 - `DDG_FETCH_HOST_RPM`: Optional per-host fetch cap (default: `0`, off). Set a positive number to enable.
+- `DDG_CACHE_TTL`: Seconds to keep a parsed page in the in-memory `fetch_content` cache (default: `300`). Paginated reads of the same URL reuse one download. Set `0` to disable.
+- `DDG_CACHE_MAX_ENTRIES`: Maximum pages kept in that cache (default: `64`). Least-recently-used eviction. Set `0` to disable.
+- `DDG_PARSE_MODE`: Default `fetch_content` extractor (`text`, `main`, or `markdown`). Default is `text` (historical flattened page). Per-call `parse_mode` overrides this.
 
 3. Restart Claude Desktop
 
@@ -262,6 +265,7 @@ async def fetch_content(
     start_index: int = 0,
     max_length: int = 8000,
     backend: Optional[str] = None,
+    parse_mode: Optional[str] = None,
 ) -> str
 ```
 
@@ -272,9 +276,10 @@ Fetches and parses content from a webpage.
 - `start_index`: Character offset to start reading from (for pagination)
 - `max_length`: Maximum number of characters to return
 - `backend`: Optional per-call override of the default fetch backend (`"httpx"`, `"curl"`, or `"auto"`). When omitted, uses whatever was set via `--fetch-backend` at server startup.
+- `parse_mode`: Optional per-call extractor (`"text"`, `"main"`, or `"markdown"`). When omitted, uses `DDG_PARSE_MODE` / `--parse-mode` (default `text`).
 
 **Returns:**
-Cleaned and formatted text content from the webpage.
+Cleaned and formatted text content from the webpage. The parsed full page is cached in memory (default 5 minutes) so later pages via `start_index` do not re-download. Metadata includes `cache=hit` or `cache=miss` when the cache is enabled.
 
 > **SSRF protection:** By default `fetch_content` refuses URLs that resolve to
 > loopback, private (RFC1918), link-local (including the `169.254.169.254` cloud
@@ -293,6 +298,15 @@ Cleaned and formatted text content from the webpage.
 - Optional per-host fetch cap, off by default (`DDG_FETCH_HOST_RPM` / `--fetch-host-rpm`)
 - Strategies: `sliding` (default) or `token_bucket` via `DDG_RATE_LIMIT_STRATEGY` / `--rate-limit-strategy`
 - HTTP 429 responses honor `Retry-After` (capped at 30s) and retry once
+- Cache hits on `fetch_content` skip both the download and the fetch rate limiter
+
+### Content cache
+
+- In-memory TTL cache of the fully parsed page (before pagination)
+- Default TTL 300 seconds, 64 entries, least-recently-used eviction
+- Errors are never cached
+- Configure with `DDG_CACHE_TTL` / `DDG_CACHE_MAX_ENTRIES` or `--cache-ttl` / `--cache-max-entries`
+- Set either value to `0` to disable
 
 ### Result Processing
 
@@ -300,6 +314,16 @@ Cleaned and formatted text content from the webpage.
 - Cleans up DuckDuckGo redirect URLs
 - Formats results for optimal LLM consumption
 - Truncates long content appropriately
+
+### Content parsing modes
+
+`fetch_content` accepts `parse_mode`:
+
+| Mode | Behavior |
+| --- | --- |
+| `text` | Historical default. Strip chrome, return flattened page text. |
+| `main` | Keep the primary `article` / `main` / content container only. |
+| `markdown` | Same primary content, rendered as lightweight markdown (headings, lists, links, code). |
 
 ### Content Safety
 
@@ -321,10 +345,7 @@ Cleaned and formatted text content from the webpage.
 
 ## Contributing
 
-Issues and pull requests are welcome! Some areas for potential improvement:
-
-- Enhanced content parsing options
-- Caching layer for frequently accessed content
+Issues and pull requests are welcome!
 
 ## License
 
